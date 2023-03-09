@@ -1,336 +1,166 @@
 import express from "express";
 import { ApolloServer, gql } from "apollo-server-express";
-const { GraphQLObjectType, GraphQLInt, GraphQLString, GraphQLList, GraphQLNonNull, GraphQLSchema, } = require('graphql');
-import oracledb, { STRING } from "oracledb";
+import oracledb from "oracledb";
 
-// const connectToDB = require('../src/oracledb');
+import cors from 'cors'
 
 async function startApolloServer() {
-    const port = 4000
+
+    const port = 3000;
+  
     const app = express();
 
-    const connectionParams: oracledb.ConnectionAttributes = {
+    app.use(cors())
+
+    const config: oracledb.PoolAttributes = {
         user: 'SYSTEM',
         password: 'root123',
-        connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))'
+        connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))',
+        poolMax: 4,
+        poolMin: 0,
+        poolIncrement: 1,
     };
 
-    // const config: oracledb.PoolAttributes = {
-    //     user: 'SYSTEM',
-    //     password: 'root123',
-    //     connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))',
-    //     poolMax: 4,
-    //     poolMin: 0,
-    //     poolIncrement: 1,
-    // };
+    const pool = await oracledb.createPool(config);
 
-    const pool = await oracledb.createPool(connectionParams);
+    const typeDefs = `
+        type User {
+          id: Int!
+          name: String!
+          email: String!
+        }
+    
+        input UserInput {
+          name: String!
+          email: String!
+        }
+    
+        type Query {
+          greeting:String
+          employees: [User!]!
+          getUser(id: Int!): User
+          getUsers: [User]
+        }
+    
+        type Mutation {
+          createUser(input: UserInput): User
+          updateUser(id: Int!, input: UserInput): User
+          deleteUser(id: Int!): User
+        }`;
 
-    // const connection =  pool.getConnection()
+    const resolvers = {
+        Query: {
+            greeting: () => "hello",
+           
+            getUser: async (_, { id }) => {
+                const connection = await pool.getConnection();
+                const result = await connection.execute(
+                    `SELECT * FROM employees WHERE id = :id`,
+                    [id]
+                );
+                const user = await result.rows[0];
 
-    const UserType = new GraphQLObjectType({
-        name: 'User',
-        fields: () => ({
-            id: { type: GraphQLInt },
-            name: { type: GraphQLString },
-            email: { type: GraphQLString },
-        }),
-    });
+                console.log("user", user);
 
-    const QueryType = new GraphQLObjectType({
-        name: 'Query',
-        fields: () => ({
-            users: {
-                type: new GraphQLList(UserType),
-                resolve: async (parent, args,) => {
-                    const connection = await pool.getConnection();
-                    const result = await connection.execute(`SELECT * FROM employees`);
-                    console.log(result.rows)
-                    const users = await result.rows;
+                await connection.close();
 
-                    await connection.close();
-
-                    return users;
-                },
+                return await user;
             },
-            user: {
-                type: UserType,
-                args: {
-                    id: { type: GraphQLNonNull(GraphQLInt) },
-                },
-                resolve: async (parent, { id }) => {
-                    const connection = await pool.getConnection();
-                    const result = await connection.execute('SELECT * FROM employees WHERE id = :id', [id], (err, result) => {
-                        if (err) {
-                            return err
-                        } else {
-                            console.log(result.rows[0])
-                            console.log("success")
-                            return result.rows[0];
-                        }
-                    });
+            getUsers: async () => {
 
-                },
-            },
-        }),
-    });
+                const connection = await pool.getConnection();
+                const result = await connection.execute(`SELECT * FROM employees`);
+                console.log(result.rows);
+                const users = await result.rows;
+                await connection.close();
+                return users;
 
-    const MutationType = new GraphQLObjectType({
-        name: 'Mutation',
-        fields: () => ({
-            createUser: {
-                type: UserType,
-                args: {
+                // const connection = await pool.getConnection();
 
-                    name: { type: GraphQLNonNull(GraphQLString) },
-                    email: { type: GraphQLNonNull(GraphQLString) },
-                },
-                // resolve: async (name: string, email: string) => {
-                //     try {
-                //         // create a connection pool
-                //         const pool = await oracledb.createPool({
-                //             user: 'SYSTEM',
-                //             password: 'root123',
-                //             connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))'
-                //         });
+                // const result = await connection.execute(`SELECT * FROM employees WHERE id = 61`);
 
-                //         // get a connection from the pool
-                //         const connection = await pool.getConnection();
-
-                //         // execute the query to insert the new user
-                //         const result = await connection.execute(
-                //             `INSERT INTO employees (name, email) VALUES (:name, :email)`,
-                //             [name, email]
-                //         );
-
-                //         // release the connection back to the pool
-                //         await connection.close();
-                //         await pool.close();
-
-                //         // return the inserted user's ID
-                //         return result.outBinds[0];
-
-                //     } catch (err) {
-                //         console.error(err);
-                //         throw err;
+                // console.log("result", result);
+                // let convertedArr = result.rows.flat();
+                // let num = 51;
+                // await convertedArr.forEach(ele => ele === num, (async(err, result) => {
+                //     console.log("1")
+                //     if(result){
+                //         await connection.execute(`SELECT * FROM employees WHERE id = :result`, [result], ((err, result) => {
+                //             if(result){
+                //                 console.log("result", result);
+                //                 return result;
+                //             }
+                //         }));
                 //     }
-                // }
-                resolve: async (parent, { name, email }) => {
+                // }))
+                // console.log(convertedArr)
+                // const users = await result.rows;
+                // await connection.close();
+                // return users;
+        
+        
 
-                    const connection = await pool.getConnection();
 
-                    await connection.execute('INSERT INTO employees(name, email) VALUES(:name, :email) RETURNING *', [name, email], async (err, result) => {
-                        if (err) {
-                            console.log("err")
-                            return err
-                        } else {
-                            console.log("success")
-                            await connection.close();
-                            await pool.close();
-                            return result.rows[0];
-                        }
-                    });
-                },
             },
-            updateUser: {
-                type: UserType,
-                args: {
-                    id: { type: GraphQLNonNull(GraphQLInt) },
-                    name: { type: GraphQLNonNull(GraphQLString) },
-                    email: { type: GraphQLNonNull(GraphQLString) },
-                },
-                resolve: async (parent, { id, name, email }) => {
-                    const connection = await pool.getConnection();
-                    await connection.execute('UPDATE employees SET name = :name, email = :email WHERE id = :id RETURNING *', [name, email, id], async (err, result) => {
-                        if (err) {
-                            return err
-                        } else {
-                            console.log("success")
-                            await connection.close();
-                            return result.rows[0];
-                        }
-                    });
+        },
+        Mutation: {
+            createUser: async (_, { input }) => {
 
-                },
+                const connection = await pool.getConnection();
+
+                console.log("hloooo");
+
+                // const result = await connection.execute(`INSERT INTO employees VALUES (
+                //     '{ "name": ":name", "email": ":email"}');
+                // COMMIT;`)
+
+                const result = await connection.execute(`INSERT INTO employees( name, email) VALUES (:name, :email)`, [input.name, input.email] || {}, {autoCommit:true});
+
+                console.log(result)
+
+                const user = await result;
+
+                await connection.close();
+
+                return user;
+
+                // return user;
             },
-            deleteUser: {
-                type: UserType,
-                args: {
-                    id: { type: GraphQLNonNull(GraphQLInt) },
-                },
-                resolve: async (parent, { id }) => {
-                    const connection = await pool.getConnection();
-                    const result = await connection.execute(`DELETE FROM employees WHERE id = :id RETURNING *`, [id]);
-                    await connection.close();
-                    return result.rows[0];
-                },
+            updateUser: async (_, { id, input }) => {
+                const connection = await pool.getConnection();
+                const result = await connection.execute(
+                    `UPDATE employees SET name = :name, email = :email WHERE id = :id`,
+                    [input.name, input.email, id], {autoCommit:true}
+                );
+                const user = result.rows[0];
+                await connection.close();
+                return user;
             },
-        })
-    })
+            deleteUser: async (_, { id }) => {
+                const connection = await pool.getConnection();
+                const result = await connection.execute(
+                    `DELETE FROM employees WHERE id = :id `,
+                    [id], {autoCommit:true}
+                );
+                console.log(result)
+                const user = result.rows[0];
+                await connection.close();
+                return user;
+            },
+        },
+    };
 
-    //     const typeDefs = `
-    //   type User {
-    //     id: Int!
-    //     name: String!
-    //     email: String!
-    //   }
-
-    //   input UserInput {
-    //     name: String!
-    //     email: String!
-    //   }
-
-    //   type Query {
-    //     greeting:String
-    //     employees: [User!]!
-    //     getUser(id: Int!): User
-    //     getUsers: [User]
-    //   }
-
-    //   type Mutation {
-    //     createUser(input: UserInput): User
-    //     updateUser(id: Int!, input: UserInput): User
-    //     deleteUser(id: Int!): User
-    //   }
-    // `;
-
-    // const resolvers = {
-    //     Query: {
-    //         greeting: () => "hello",
-    //         employees: async () => {
-    //             let connection;
-
-    //             try {
-    //                 connection = await oracledb.getConnection({
-    //                     user: 'SYSTEM',
-    //                     password: 'root123',
-    //                     connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))',
-    //                 });
-
-    //                 const result = await connection.execute(`
-    //                 SELECT *
-    //                 FROM employees
-    //               `);
-
-    //                 console.log("Result", result);
-
-
-    //                 var valueTab = await result.rows.map((row: any) => {
-    //                     console.log(row)
-    //                     return row.ID
-    //                     // name: row.NAME,
-    //                     // email: row.EMAIL,
-    //                 })
-
-    //                 console.log("Valuue", valueTab);
-
-    //             } catch (error) {
-    //                 console.error(error);
-    //                 throw error;
-    //             } finally {
-    //                 if (connection) {
-    //                     try {
-    //                         await connection.close();
-    //                     } catch (error) {
-    //                         console.error(error);
-    //                     }
-    //                 }
-    //             }
-    //         },
-    //         getUser: async (_, { id }) => {
-    //             const connection = await pool.getConnection();
-    //             const result = await connection.execute(
-    //                 `SELECT * FROM employees WHERE id = :id`,
-    //                 [id]
-    //             );
-    //             const user = await result.rows[0];
-
-    //             console.log("user", user)
-    //             await connection.close();
-
-    //             return await user;
-    //         },
-    //         getUsers: async () => {
-
-    //             const connection = await pool.getConnection();
-    //             const result = await connection.execute(`SELECT * FROM employees`);
-    //             console.log(result.rows)
-    //             const users = await result.rows;
-    //             return users;
-    //             await connection.close();
-
-
-    //         },
-    //     },
-    //     Mutation: {
-    //         createUser: async (_, { input }) => {
-
-    //             const connection = await pool.getConnection();
-
-    //             console.log("hloooo");
-
-    //             // const result = await connection.execute(`INSERT INTO employees VALUES (
-    //             //     '{ "name": ":name", "email": ":email"}');
-    //             // COMMIT;`)
-
-    //             const result = await connection.execute(`INSERT INTO employees( name, email) VALUES (:name, :email)`, [input.name, input.email] || {});
-
-    //             console.log(result)
-
-    //             var valueTab = await result.rows.map((row: any) => {
-    //                 console.log(row)
-    //                 return row.ID
-    //                 // name: row.NAME,
-    //                 // email: row.EMAIL,
-    //             })
-    //             // const res = await result.rows[0];
-    //             console.log(valueTab)
-    //             const user = await result.rows[0];
-
-
-
-    //             await connection.close();
-    //             return user;
-    //             // return user;
-    //         },
-    //         updateUser: async (_, { id, input }) => {
-    //             const connection = await pool.getConnection();
-    //             const result = await connection.execute(
-    //                 `UPDATE employees SET name = :name, email = :email WHERE id = :id RETURNING *`,
-    //                 [input.name, input.email, id]
-    //             );
-    //             const user = result.rows[0];
-    //             await connection.close();
-    //             return user;
-    //         },
-    //         deleteUser: async (_, { id }) => {
-    //             const connection = await pool.getConnection();
-    //             const result = await connection.execute(
-    //                 `DELETE FROM employees WHERE id = :id `,
-    //                 [id]
-    //             );
-    //             console.log(result)
-    //             const user = result.rows[0];
-    //             await connection.close();
-    //             return user;
-    //         },
-    //     },
-    // };
-
-    const schema = new GraphQLSchema({
-        query: QueryType,
-        mutation: MutationType,
-    });
-
-    const server = new ApolloServer({ schema });
+    const server = new ApolloServer({ typeDefs, resolvers });
 
     await server.start();
 
+    
+
     server.applyMiddleware({ app });
 
-    app.listen(4000, () =>
+    app.listen(3000, () =>
         console.log(
-            'Server ready at http://localhost:4000/graphql'
+            'Server ready at http://localhost:3000/graphql'
         )
     );
 

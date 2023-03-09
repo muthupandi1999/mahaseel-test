@@ -1,6 +1,6 @@
 import express from "express";
 import { ApolloServer, gql } from "apollo-server-express";
-const { GraphQLObjectType, GraphQLInt,GraphQLString, GraphQLList, GraphQLNonNull, GraphQLSchema , } = require('graphql');
+const { GraphQLObjectType, GraphQLInt, GraphQLString, GraphQLList, GraphQLNonNull, GraphQLSchema, } = require('graphql');
 import oracledb, { STRING } from "oracledb";
 
 // const connectToDB = require('../src/oracledb');
@@ -9,16 +9,29 @@ async function startApolloServer() {
     const port = 4000
     const app = express();
 
-    const config: oracledb.PoolAttributes = {
+    // const connectionParams = await oracledb.getConnection({
+    //     user: 'SYSTEM',
+    //     password: 'root123',
+    //     connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))'
+    // });
+
+
+    const connectionParams: oracledb.ConnectionAttributes = {
         user: 'SYSTEM',
         password: 'root123',
-        connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))',
-        poolMax: 4,
-        poolMin: 0,
-        poolIncrement: 1,
+        connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))'
     };
 
-    const pool = await oracledb.createPool(config);
+    // const config: oracledb.PoolAttributes = {
+    //     user: 'SYSTEM',
+    //     password: 'root123',
+    //     connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))',
+    //     poolMax: 4,
+    //     poolMin: 0,
+    //     poolIncrement: 1,
+    // };
+
+    const pool = await oracledb.createPool(connectionParams);
 
     // const connection =  pool.getConnection()
 
@@ -36,12 +49,12 @@ async function startApolloServer() {
         fields: () => ({
             users: {
                 type: new GraphQLList(UserType),
-                resolve: async (parent, args, ) => {
+                resolve: async (parent, args,) => {
                     const connection = await pool.getConnection();
                     const result = await connection.execute(`SELECT * FROM employees`);
                     console.log(result.rows)
                     const users = await result.rows;
-                   
+
                     await connection.close();
 
                     return users;
@@ -54,8 +67,16 @@ async function startApolloServer() {
                 },
                 resolve: async (parent, { id }) => {
                     const connection = await pool.getConnection();
-                    const result = await connection.execute('SELECT * FROM employees WHERE id = :id', [id]);
-                    return result.rows[0];
+                    const result = await connection.execute('SELECT * FROM employees WHERE id = :id', [id], (err, result) => {
+                        if (err) {
+                            return err
+                        } else {
+                            console.log(result.rows[0])
+                            console.log("success")
+                            return result.rows[0];
+                        }
+                    });
+
                 },
             },
         }),
@@ -67,19 +88,83 @@ async function startApolloServer() {
             createUser: {
                 type: UserType,
                 args: {
-                    
                     name: { type: GraphQLNonNull(GraphQLString) },
                     email: { type: GraphQLNonNull(GraphQLString) },
                 },
+                // resolve: async (name: string, email: string) => {
+                //     try {
+                //         // create a connection pool
+                //         const pool = await oracledb.createPool({
+                //             user: 'SYSTEM',
+                //             password: 'root123',
+                //             connectString: '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=CIPL1117UI)(PORT=1522))(CONNECT_DATA=(SERVER=DEDICATED)(SID=xe)))'
+                //         });
+
+                //         // get a connection from the pool
+                //         const connection = await pool.getConnection();
+
+                //         // execute the query to insert the new user
+                //         const result = await connection.execute(
+                //             `INSERT INTO employees (name, email) VALUES (:name, :email)`,
+                //             [name, email]
+                //         );
+
+                //         // release the connection back to the pool
+                //         await connection.close();
+                //         await pool.close();
+
+                //         // return the inserted user's ID
+                //         return result.outBinds[0];
+
+                //     } catch (err) {
+                //         console.error(err);
+                //         throw err;
+                //     }
+                // }
                 resolve: async (parent, { name, email }) => {
-
+                    console.log("name",name);
+                    console.log("email",email);
                     const connection = await pool.getConnection();
+                    console.log("connection", connection);
+                    // await INSERT INTO EmailsRecebidos (De, Assunto, Data)
+                    // VALUES (@_DE, @_ASSUNTO, @_DATA)
+                    var result = await connection.execute(`INSERT INTO employees(name, email) VALUES(:name,:email)`,[name, email],{autoCommit: true})
+                        console.log("result",result);
+                        // async (err,result) => {
+                        // if (err) {
+                        //     console.log("err")
+                        //     return err
+                        // } else {
+                        //     console.log("success")
+                        //     await connection.close();
+                        //     await pool.close();
+                        //     return result.rows[0];
+                        // }
+                    // });
+                    // const result = await connection.execute(`INSERT INTO employees(name, email) VALUES(${name}, ${email}) WHERE NOT EXISTS ( SELECT * FROM employees 
+                    //     WHERE email = ${email}`, [name, email], async (err, result) => {
+                    //     if (err) {
+                    //         console.log("err")
+                    //         return err
+                    //     } else {
+                    //         console.log("success")
+                    //         await connection.close();
+                    //         await pool.close();
+                    //         return result.rows[0];
+                    //     }
+                    // });
 
-                    const result = await connection.execute('INSERT INTO employees(name, email) VALUES(:name, :email) RETURNING *', [name, email]);
-
-                    console.log("result", result);
-                    
-                    return result.rows[0];
+                    // await connection.execute('INSERT INTO employees(name, email) VALUES(:name, :email) RETURNING *', [name, email], async (err, result) => {
+                    //     if (err) {
+                    //         console.log("err")
+                    //         return err
+                    //     } else {
+                    //         console.log("success")
+                    //         await connection.close();
+                    //         await pool.close();
+                    //         return result.rows[0];
+                    //     }
+                    // });
                 },
             },
             updateUser: {
@@ -91,8 +176,16 @@ async function startApolloServer() {
                 },
                 resolve: async (parent, { id, name, email }) => {
                     const connection = await pool.getConnection();
-                    const result = await connection.execute('UPDATE employees SET name = :name, email = :email WHERE id = :id RETURNING *', [name, email, id]);
-                    return result.rows[0];
+                    const result=  await connection.execute('UPDATE employees SET name = :name, email = :email WHERE id = :id', [name, email, id],{autoCommit: true}, async (err, result) => {
+                        if (err) {
+                            return err
+                        } else {
+                            console.log("success")
+                            await connection.close();
+                            return result.rows;
+                        }
+                    });
+
                 },
             },
             deleteUser: {
@@ -102,9 +195,9 @@ async function startApolloServer() {
                 },
                 resolve: async (parent, { id }) => {
                     const connection = await pool.getConnection();
-                    const result = await connection.execute(`DELETE FROM employees WHERE id = :id RETURNING *`, [id]);
-
-                    return result.rows[0];
+                    const result = await connection.execute(`DELETE FROM employees WHERE id = :id`, [id],{autoCommit: true});
+                    await connection.close();
+                    return result.rows;
                 },
             },
         })
